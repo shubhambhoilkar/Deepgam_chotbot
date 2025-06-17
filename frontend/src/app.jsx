@@ -8,11 +8,11 @@ export default function App() {
 
   const ws = useRef(null);
   const recognitionRef = useRef(null);
-  const ws = new WebSocket(`${import.meta.env.VITE_WS_URL || 'ws://localhost:5173/ws'}`);
 
   // WebSocket Connection
   useEffect(() => {
-    ws.current = new WebSocket('ws://localhost:9900/ws');
+    const wsURL = new WebSocket(`${import.meta.env.VITE_WS_URL || 'ws://localhost:5173/ws'}`);
+    ws.current = new WebSocket(wsURL);
 
     ws.current.onopen = () => {
       console.log('WebSocket connected.');
