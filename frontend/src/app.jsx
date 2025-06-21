@@ -1,17 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import Reactjs, { useState, useEffect, useRef } from 'react';
 
 export default function App() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
+  const [listeningTimeout, setListeningTimeout] = useState(null);
 
   const ws = useRef(null);
   const recognitionRef = useRef(null);
 
   // WebSocket Connection
   useEffect(() => {
-    ws.current = new WebSocket('ws://localhost:9900/ws');
+    const protocol = window.location.protocol === 'https:' ? 'wss': 'ws'; 
+    ws.current = new WebSocket(`ws://${window.location.hostname}:9900/ws`);
 
     ws.current.onopen = () => {
       console.log('WebSocket connected.');
@@ -22,10 +24,7 @@ export default function App() {
       console.log('Message from server:', event.data);
       try {
         const data = JSON.parse(event.data);
-
-        // Append bot message with optional audio
         setMessages((prev) => [...prev, { sender: 'bot', text: data.text, audio: data.audio }]);
-
       } catch (error) {
         console.error('Failed to parse WebSocket message:', error);
       }
@@ -43,9 +42,9 @@ export default function App() {
     return () => ws.current.close();
   }, []);
 
-  // Speech Recognition Setup
-  const startListening = () => {
-    if (!('webkitSpeechRecognition' in window)) {
+  // Continuous Speech Recognition Setup
+  useEffect(() => {
+    if (!('webkitSpeechRecognition' || !navigator.mediaDevices.getUserMedia)) {   //if (!('webkitSpeechRecognition' in window))
       alert('Speech recognition not supported in this browser.');
       return;
     }
@@ -55,30 +54,64 @@ export default function App() {
     recognitionRef.current.lang = 'en-US';
     recognitionRef.current.interimResults = false;
     recognitionRef.current.maxAlternatives = 1;
+    recognitionRef.current.continuous = false; // Browser quirk: continuous doesn't always work, so we restart manually.
 
     recognitionRef.current.onstart = () => {
       setIsListening(true);
-      console.log('Voice recognition started. Speak now.');
+      console.log('Voice recognition started.');
     };
 
     recognitionRef.current.onresult = (event) => {
       const transcript = event.results[0][0].transcript;
       console.log('Voice input:', transcript);
       setInput('');
-      sendMessage(transcript);
+
+      // Clear previous timeout if any
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+      }
+
+      // Hold and send the latest request after a short delay (e.g., 1 second)
+      const timeout = setTimeout(() => {
+        sendMessage(transcript);
+      }, 1000); // Adjust delay as needed
+      setListeningTimeout(timeout);
     };
 
     recognitionRef.current.onerror = (event) => {
       console.error('Speech recognition error:', event.error);
-      setIsListening(false);
+      // Restart recognition automatically
+      restartListening();
     };
 
     recognitionRef.current.onend = () => {
       console.log('Voice recognition ended.');
-      setIsListening(false);
+      // Restart recognition automatically
+      restartListening();
     };
 
-    recognitionRef.current.start();
+    startListening();
+
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+      }
+      if (listeningTimeout) {
+        clearTimeout(listeningTimeout);
+      }
+    };
+  }, []);
+
+  const restartListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+    }
+  };
+
+  const startListening = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.start();
+    }
   };
 
   const sendMessage = (textToSend) => {
@@ -101,6 +134,7 @@ export default function App() {
     <div style={{ padding: '20px', maxWidth: '600px', margin: '0 auto' }}>
       <h1>Sam's Voice Chatbot</h1>
       <p>Status: {isConnected ? '🟢 Connected' : '🔴 Disconnected'}</p>
+      <p>Voice Listening: {isListening ? '🎤 Active' : '⏹️ Inactive (Auto-restarting)'}</p>
 
       <div style={{ border: '1px solid #ccc', padding: '10px', height: '400px', overflowY: 'scroll' }}>
         {messages.map((msg, index) => (
@@ -128,16 +162,8 @@ export default function App() {
         <button onClick={() => sendMessage()} style={{ padding: '10px 20px', marginLeft: '10px' }}>
           Send
         </button>
-        <button
-          onClick={startListening}
-          style={{
-            padding: '10px',
-            marginLeft: '10px',
-            backgroundColor: isListening ? 'red' : 'green',
-            color: 'white'
-          }}
-        >
-          {isListening ? 'Listening...' : '🎤 Speak'}
+        <button onClick={startListening} style={{ padding: '10px 20px', marginLeft: '10px', backgroundColor: 'green', color: 'white', border: 'none', borderRadius: '5px' }}>
+          🎤 Start Listening
         </button>
       </div>
     </div>
